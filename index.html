@@ -32,7 +32,7 @@ button.action{min-height:46px;border:0;border-radius:11px;padding:0 17px;font:in
 <section class="table-shell"><div class="table"><div class="table-logo">Whold'em</div><div class="seat s0 you" id="seat0"></div><div class="seat s1" id="seat1"></div><div class="seat s2" id="seat2"></div><div class="seat s3" id="seat3"></div><section class="community"><div class="board-label" id="streetLabel">Pre-Flop</div><div class="community-cards" id="communityCards"></div><div class="pot">Pot <span id="potValue">$0</span></div></section></div></section>
 <section class="action-panel"><div class="message gold" id="message" aria-live="polite">Press Deal Hand to begin.</div><div class="actions"><button class="action primary" id="dealBtn" type="button">Deal Hand</button><button class="action danger" id="foldBtn" type="button" disabled>Fold</button><button class="action secondary" id="callBtn" type="button" disabled>Check</button><button class="action secondary" id="allInBtn" type="button" disabled>All In</button><button class="action danger" id="newMatchBtn" type="button">New Match</button><button class="action secondary" id="soundBtn" type="button">🔊 Sound: On</button></div><div class="bet-builder"><div class="bet-builder-title">Build Your Bet / Raise</div><div class="chip-rack"><button class="bet-chip c10" data-bet-chip="10" type="button" disabled>$10</button><button class="bet-chip c20" data-bet-chip="20" type="button" disabled>$20</button><button class="bet-chip c50" data-bet-chip="50" type="button" disabled>$50</button><button class="bet-chip c100" data-bet-chip="100" type="button" disabled>$100</button><div class="bet-build-readout"><small id="betBuildLabel">Selected Raise</small><strong id="betBuildValue">$0</strong></div><button class="action secondary" id="clearRaiseBtn" type="button" disabled>Clear Chips</button><button class="action primary" id="commitRaiseBtn" type="button" disabled>Bet / Raise</button></div><div class="selected-chip-stack" id="selectedChipStack" aria-label="Selected betting chips"></div></div></section>
 <section class="log" id="log"></section>
-<section class="rules"><strong>Whold'em rules:</strong> Four-player No-Limit Hold'em-style play with $10/$20 blinds and $1,000 starting stacks. You receive two private cards and share five community cards. Betting occurs pre-flop, on the flop, turn, and river. On your turn, tap the $10/$20/$50/$100 chips as many times as you like to build a bet or raise, then press Bet/Raise. The best five-card poker hand wins. Tied hands split the pot. Side pots are handled for all-ins. Computer players use simple hand-strength and pot-pressure logic rather than seeing your cards. Chip sounds can be toggled with the Sound button. Your player name is saved in this browser. Cards use a single large top-left rank/suit layout with one large center suit for easier reading.</section>
+<section class="rules"><strong>Whold'em rules:</strong> Four-player No-Limit Hold'em-style play with $10/$20 blinds and $1,000 starting stacks. You receive two private cards and share five community cards. Betting occurs pre-flop, on the flop, turn, and river. On your turn, tap the $10/$20/$50/$100 chips as many times as you like to build a bet or raise, then press Bet/Raise. The best five-card poker hand wins. Tied hands split the pot. Side pots are handled for all-ins. Computer players use simple hand-strength and pot-pressure logic rather than seeing your cards. Chip sounds can be toggled with the Sound button. Bets, raises, calls, blinds, and all-ins use poker-chip sounds; checks use a double table tap. Your player name is saved in this browser. Cards use a single large top-left rank/suit layout with one large center suit for easier reading.</section>
 </main>
 <script>
 (() => {
@@ -44,9 +44,102 @@ button.action{min-height:46px;border:0;border-radius:11px;padding:0 17px;font:in
   let savedPlayerName='';try{savedPlayerName=(localStorage.getItem('wholdem_player_name')||'').trim()}catch(e){}const players=[{name:savedPlayerName||'You',human:true,chips:1000,hand:[],folded:false,allIn:false,bet:0,totalBet:0,lastAction:''},{name:'Maya',human:false,chips:1000,hand:[],folded:false,allIn:false,bet:0,totalBet:0,lastAction:''},{name:'Dex',human:false,chips:1000,hand:[],folded:false,allIn:false,bet:0,totalBet:0,lastAction:''},{name:'Nova',human:false,chips:1000,hand:[],folded:false,allIn:false,bet:0,totalBet:0,lastAction:''}];playerNameInput.value=savedPlayerName;
   const money=n=>`$${Math.max(0,Math.round(n))}`;
   function saveStats(){localStorage.setItem('wholdem_stats',JSON.stringify(stats))}function setMessage(t,type=''){messageEl.textContent=t;messageEl.className='message'+(type?` ${type}`:'')}function log(t){const d=document.createElement('div');d.innerHTML=t;logEl.prepend(d);while(logEl.children.length>10)logEl.lastChild.remove()}
-  function ensureAudio(){if(!soundOn)return null;const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;if(!audioCtx)audioCtx=new AC();if(audioCtx.state==='suspended')audioCtx.resume();return audioCtx}
-  function chipSound(kind='bet',amount=20){const ctx=ensureAudio();if(!ctx)return;const now=ctx.currentTime,base=kind==='win'?820:520,count=kind==='win'?4:Math.min(3,Math.max(1,Math.ceil(amount/40)));for(let i=0;i<count;i++){const o=ctx.createOscillator(),g=ctx.createGain(),t=now+i*.035;o.type='triangle';o.frequency.setValueAtTime(base+i*95,t);o.frequency.exponentialRampToValueAtTime((base+i*95)*1.45,t+.045);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(kind==='win'?.055:.035,t+.005);g.gain.exponentialRampToValueAtTime(.0001,t+.075);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+.08)}}
-  function toggleSound(){soundOn=!soundOn;soundBtn.textContent=soundOn?'🔊 Sound: On':'🔇 Sound: Off';if(soundOn)ensureAudio()}
+  function getAudioContext(){
+    if(!soundOn)return null;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return null;
+    if(!audioCtx||audioCtx.state==='closed')audioCtx=new AC();
+    return audioCtx;
+  }
+  async function unlockAudio(){
+    const ctx=getAudioContext();
+    if(!ctx)return null;
+    try{
+      if(ctx.state!=='running')await ctx.resume();
+      if(ctx.state==='running'){
+        // A near-silent pulse helps iOS/Safari keep WebAudio unlocked
+        // after a fresh user gesture.
+        const osc=ctx.createOscillator(),gain=ctx.createGain();
+        gain.gain.setValueAtTime(.00001,ctx.currentTime);
+        osc.connect(gain);gain.connect(ctx.destination);
+        osc.start();osc.stop(ctx.currentTime+.01);
+      }
+    }catch(e){}
+    return ctx;
+  }
+  function activeAudio(){
+    const ctx=getAudioContext();
+    return ctx&&ctx.state==='running'?ctx:null;
+  }
+  function noiseBurst(ctx,time,frequency=2600,volume=.045,duration=.045){
+    const frames=Math.max(1,Math.floor(ctx.sampleRate*duration));
+    const buffer=ctx.createBuffer(1,frames,ctx.sampleRate);
+    const data=buffer.getChannelData(0);
+    for(let i=0;i<frames;i++)data[i]=(Math.random()*2-1)*(1-i/frames);
+    const src=ctx.createBufferSource();
+    const filter=ctx.createBiquadFilter();
+    const gain=ctx.createGain();
+    src.buffer=buffer;
+    filter.type='bandpass';
+    filter.frequency.setValueAtTime(frequency,time);
+    filter.Q.setValueAtTime(1.3,time);
+    gain.gain.setValueAtTime(.0001,time);
+    gain.gain.exponentialRampToValueAtTime(volume,time+.003);
+    gain.gain.exponentialRampToValueAtTime(.0001,time+duration);
+    src.connect(filter);filter.connect(gain);gain.connect(ctx.destination);
+    src.start(time);src.stop(time+duration+.01);
+  }
+  function chipClick(ctx,time,pitch=1050,volume=.045){
+    noiseBurst(ctx,time,pitch*2.1,volume*.75,.035);
+    const osc=ctx.createOscillator(),gain=ctx.createGain();
+    osc.type='triangle';
+    osc.frequency.setValueAtTime(pitch,time);
+    osc.frequency.exponentialRampToValueAtTime(pitch*.72,time+.045);
+    gain.gain.setValueAtTime(.0001,time);
+    gain.gain.exponentialRampToValueAtTime(volume,time+.002);
+    gain.gain.exponentialRampToValueAtTime(.0001,time+.06);
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.start(time);osc.stop(time+.065);
+  }
+  function chipSound(kind='bet',amount=20){
+    const ctx=activeAudio();
+    if(!ctx)return;
+    const now=ctx.currentTime+.008;
+    let count=1;
+    if(kind==='win')count=5;
+    else if(kind==='stack')count=Math.min(4,Math.max(2,Math.ceil(amount/35)));
+    else count=Math.min(3,Math.max(1,Math.ceil(amount/55)));
+    for(let i=0;i<count;i++){
+      const jitter=(Math.random()-.5)*55;
+      chipClick(ctx,now+i*.035,980+i*115+jitter,kind==='win'?.055:.043);
+    }
+  }
+  function tableTapSound(){
+    const ctx=activeAudio();
+    if(!ctx)return;
+    const now=ctx.currentTime+.008;
+    [0,.115].forEach((offset,index)=>{
+      const t=now+offset;
+      noiseBurst(ctx,t,520,.055,.05);
+      const osc=ctx.createOscillator(),gain=ctx.createGain();
+      osc.type='sine';
+      osc.frequency.setValueAtTime(165-index*10,t);
+      osc.frequency.exponentialRampToValueAtTime(92,t+.07);
+      gain.gain.setValueAtTime(.0001,t);
+      gain.gain.exponentialRampToValueAtTime(.095,t+.003);
+      gain.gain.exponentialRampToValueAtTime(.0001,t+.085);
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.start(t);osc.stop(t+.09);
+    });
+  }
+  async function toggleSound(){
+    soundOn=!soundOn;
+    soundBtn.textContent=soundOn?'🔊 Sound: On':'🔇 Sound: Off';
+    if(soundOn){
+      await unlockAudio();
+      chipSound('bet',10);
+    }
+  }
   function humanTurn(){return handActive&&actionIndex===0&&!players[0].folded&&!players[0].allIn}
   function clearRaiseSelection(silent=false){raiseAmount=0;raiseChipStack=[];renderBetBuilder();if(!silent&&humanTurn())setMessage(callAmount(0)===0?'Your turn — check or build a bet with chips.':`Your turn — ${money(callAmount(0))} to call, or build a raise with chips.`,'gold')}
   function availableRaiseExtra(){if(!humanTurn())return 0;return Math.max(0,players[0].chips-callAmount(0))}
@@ -90,13 +183,13 @@ button.action{min-height:46px;border:0;border-radius:11px;padding:0 17px;font:in
   function makeCard(card,hidden=false,delay=0,animate=false){const el=document.createElement('div');el.className='card'+(hidden?' back':card.red?' red':'')+(animate?' deal-anim':'');if(animate)el.style.animationDelay=`${delay}ms`;if(!hidden){const tl=document.createElement('div');tl.className='corner-block';const tlRank=document.createElement('div');tlRank.className='corner-rank';tlRank.textContent=card.rank;const tlSuit=document.createElement('div');tlSuit.className='corner-suit';tlSuit.textContent=card.suit;tl.append(tlRank,tlSuit);const centerSuit=document.createElement('div');centerSuit.className='center-suit';centerSuit.textContent=card.suit;el.append(tl,centerSuit)}return el}
   const activePlayers=()=>players.filter(p=>!p.folded),bettingPlayers=()=>players.filter(p=>!p.folded&&!p.allIn),totalPot=()=>players.reduce((s,p)=>s+p.totalBet,0);
   function nextEligibleSeat(from,pred){for(let s=1;s<=players.length;s++){const i=(from+s)%players.length;if(pred(players[i],i))return i}return-1}function nextWithChips(from){return nextEligibleSeat(from,p=>p.chips>0)}
-  function postBlind(i,a,label){const p=players[i],pay=Math.min(a,p.chips);p.chips-=pay;p.bet+=pay;p.totalBet+=pay;if(p.chips===0)p.allIn=true;p.lastAction=`${label} ${money(pay)}`;chipSound('bet',pay);log(`<strong>${p.name}</strong> posts ${label} ${money(pay)}.`)}
+  function postBlind(i,a,label){const p=players[i],pay=Math.min(a,p.chips);p.chips-=pay;p.bet+=pay;p.totalBet+=pay;if(p.chips===0)p.allIn=true;p.lastAction=`${label} ${money(pay)}`;chipSound('stack',pay);log(`<strong>${p.name}</strong> posts ${label} ${money(pay)}.`)}
   function resetHandState(){community=[];renderedCommunityCount=0;renderedHoleCounts=[0,0,0,0];raiseAmount=0;raiseChipStack=[];currentBet=0;pending.clear();showdown=false;street='preflop';for(const p of players){p.hand=[];p.folded=p.chips<=0;p.allIn=false;p.bet=0;p.totalBet=0;p.lastAction=p.chips<=0?'Sitting out':''}}
   function dealHand(){if(handActive)return;if(players[0].chips<=0){setMessage(`${players[0].name} is out of chips. Start a New Match to play again.`,'bad');return}if(players.filter(p=>p.chips>0).length<2){setMessage('Not enough players have chips. Start a New Match.','bad');return}clearTimeout(botTimer);freshDeck();resetHandState();handActive=true;stats.played++;saveStats();logEl.innerHTML='';dealerIndex=nextWithChips(dealerIndex);const sb=nextWithChips(dealerIndex),bb=nextWithChips(sb);for(let r=0;r<2;r++){let i=dealerIndex;for(let n=0;n<players.length;n++){i=(i+1)%players.length;if(players[i].chips>0)players[i].hand.push(draw())}}postBlind(sb,10,'small blind');postBlind(bb,20,'big blind');currentBet=Math.max(...players.map(p=>p.bet));pending=new Set(players.map((p,i)=>(!p.folded&&!p.allIn)?i:null).filter(i=>i!==null));actionIndex=nextPending(bb);setMessage('Cards are dealt. Action is underway.','gold');log(`<strong>${players[dealerIndex].name}</strong> has the dealer button.`);render();continueTurn()}
   function nextPending(from){for(let s=1;s<=players.length;s++){const i=(from+s)%players.length;if(pending.has(i)&&!players[i].folded&&!players[i].allIn)return i}return-1}function callAmount(i){return Math.max(0,currentBet-players[i].bet)}
-  function commit(i,a){const p=players[i],pay=Math.min(a,p.chips);p.chips-=pay;p.bet+=pay;p.totalBet+=pay;if(p.chips===0)p.allIn=true;if(pay>0)chipSound('bet',pay);return pay}
+  function commit(i,a){const p=players[i],pay=Math.min(a,p.chips);p.chips-=pay;p.bet+=pay;p.totalBet+=pay;if(p.chips===0)p.allIn=true;if(pay>0)chipSound('stack',pay);return pay}
   function fold(i){if(!handActive||i!==actionIndex)return;if(i===0){raiseAmount=0;raiseChipStack=[];}const p=players[i];p.folded=true;p.lastAction='Fold';pending.delete(i);log(`<strong>${p.name}</strong> folds.`);afterAction(i)}
-  function checkCall(i){if(!handActive||i!==actionIndex)return;if(i===0){raiseAmount=0;raiseChipStack=[];}const p=players[i],need=callAmount(i);if(need===0){p.lastAction='Check';log(`<strong>${p.name}</strong> checks.`)}else{const paid=commit(i,need);p.lastAction=paid<need?'All In':`Call ${money(paid)}`;log(`<strong>${p.name}</strong> ${paid<need?'is all in for':'calls'} ${money(paid)}.`)}pending.delete(i);afterAction(i)}
+  function checkCall(i){if(!handActive||i!==actionIndex)return;if(i===0){raiseAmount=0;raiseChipStack=[];}const p=players[i],need=callAmount(i);if(need===0){p.lastAction='Check';tableTapSound();log(`<strong>${p.name}</strong> checks.`)}else{const paid=commit(i,need);p.lastAction=paid<need?'All In':`Call ${money(paid)}`;log(`<strong>${p.name}</strong> ${paid<need?'is all in for':'calls'} ${money(paid)}.`)}pending.delete(i);afterAction(i)}
   function raiseBy(i,inc){if(!handActive||i!==actionIndex)return;const p=players[i],target=currentBet+inc,need=Math.max(0,target-p.bet),old=currentBet;commit(i,need);if(p.bet>old){currentBet=p.bet;p.lastAction=p.allIn?`All In ${money(p.bet)}`:`Raise to ${money(p.bet)}`;pending=new Set(players.map((q,j)=>(j!==i&&!q.folded&&!q.allIn)?j:null).filter(j=>j!==null));log(`<strong>${p.name}</strong> raises to ${money(p.bet)}${p.allIn?' and is all in':''}.`)}else{pending.delete(i);p.lastAction=`All In ${money(p.bet)}`;log(`<strong>${p.name}</strong> is all in for ${money(p.bet)}.`)}afterAction(i)}
   function allIn(i){if(!handActive||i!==actionIndex)return;if(i===0){raiseAmount=0;raiseChipStack=[];}const p=players[i],old=currentBet,paid=commit(i,p.chips);if(p.bet>old){currentBet=p.bet;pending=new Set(players.map((q,j)=>(j!==i&&!q.folded&&!q.allIn)?j:null).filter(j=>j!==null));log(`<strong>${p.name}</strong> moves all in to ${money(p.bet)}.`)}else{pending.delete(i);log(`<strong>${p.name}</strong> calls all in for ${money(paid)}.`)}p.lastAction=`All In ${money(p.bet)}`;afterAction(i)}
   function afterAction(i){if(activePlayers().length===1){awardUncontested();return}if(pending.size===0){endBettingRound();return}actionIndex=nextPending(i);if(actionIndex===-1){endBettingRound();return}render();continueTurn()}
@@ -116,7 +209,7 @@ button.action{min-height:46px;border:0;border-radius:11px;padding:0 17px;font:in
   function renderSeat(i,winners=[]){const p=players[i],el=seats[i],prev=renderedHoleCounts[i];el.innerHTML='';el.className=`seat s${i}${i===0?' you':''}${actionIndex===i&&handActive?' active':''}${p.folded?' folded':''}${winners.includes(i)?' winner':''}`;const top=document.createElement('div');top.className='seat-top';const n=document.createElement('div');n.className='name';n.textContent=p.name;top.appendChild(n);if(i===dealerIndex&&street!=='waiting'){const b=document.createElement('span');b.className='badge';b.textContent='D';top.appendChild(b)}const ch=document.createElement('div');ch.className='chips';ch.textContent=money(p.chips);const bet=document.createElement('div');bet.className='bet';bet.textContent=p.bet>0?`Bet ${money(p.bet)}`:'';const st=document.createElement('div');st.className='state';st.textContent=p.lastAction||'';const cards=document.createElement('div');cards.className='cards';p.hand.forEach((c,j)=>{const hide=i!==0&&!showdown&&!p.folded;if(p.folded&&i!==0&&!showdown)return;cards.appendChild(makeCard(c,hide,j*60,j>=prev))});renderedHoleCounts[i]=p.hand.length;el.append(top,ch,bet,st,cards)}
   function render(force=false,winners=[]){if(force)showdown=true;renderStreet();renderCommunity();for(let i=0;i<players.length;i++)renderSeat(i,winners);potValueEl.textContent=money(totalPot());yourChipsEl.textContent=money(players[0].chips);yourChipsLabel.textContent=players[0].name==='You'?'Your Chips':`${players[0].name}'s Chips`;handsPlayedEl.textContent=stats.played;handsWonEl.textContent=stats.won;setButtons()}
   function newMatch(){clearTimeout(botTimer);players.forEach(p=>{p.chips=1000;p.hand=[];p.folded=false;p.allIn=false;p.bet=0;p.totalBet=0;p.lastAction=''});community=[];renderedCommunityCount=0;renderedHoleCounts=[0,0,0,0];raiseAmount=0;raiseChipStack=[];dealerIndex=-1;actionIndex=-1;currentBet=0;pending.clear();handActive=false;showdown=false;street='waiting';logEl.innerHTML='';setMessage('New match ready. Press Deal Hand to begin.','gold');render()}
-  dealBtn.addEventListener('click',dealHand);foldBtn.addEventListener('click',()=>fold(0));callBtn.addEventListener('click',()=>checkCall(0));allInBtn.addEventListener('click',()=>allIn(0));newMatchBtn.addEventListener('click',newMatch);soundBtn.addEventListener('click',toggleSound);clearRaiseBtn.addEventListener('click',()=>clearRaiseSelection(true));commitRaiseBtn.addEventListener('click',commitBuiltRaise);betChipBtns.forEach(btn=>btn.addEventListener('click',()=>addRaiseChip(Number(btn.dataset.betChip))));setNameBtn.addEventListener('click',setPlayerName);playerNameInput.addEventListener('input',()=>applyPlayerName(playerNameInput.value,false,false));playerNameInput.addEventListener('change',setPlayerName);playerNameInput.addEventListener('blur',()=>{if(document.activeElement!==setNameBtn)setPlayerName()});playerNameInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();setPlayerName();playerNameInput.blur()}});render();
+  dealBtn.addEventListener('click',async()=>{await unlockAudio();dealHand()});foldBtn.addEventListener('click',async()=>{await unlockAudio();fold(0)});callBtn.addEventListener('click',async()=>{await unlockAudio();checkCall(0)});allInBtn.addEventListener('click',async()=>{await unlockAudio();allIn(0)});newMatchBtn.addEventListener('click',async()=>{await unlockAudio();newMatch()});soundBtn.addEventListener('click',toggleSound);clearRaiseBtn.addEventListener('click',async()=>{await unlockAudio();clearRaiseSelection(true)});commitRaiseBtn.addEventListener('click',async()=>{await unlockAudio();commitBuiltRaise()});betChipBtns.forEach(btn=>btn.addEventListener('click',async()=>{await unlockAudio();addRaiseChip(Number(btn.dataset.betChip))}));setNameBtn.addEventListener('click',setPlayerName);playerNameInput.addEventListener('input',()=>applyPlayerName(playerNameInput.value,false,false));playerNameInput.addEventListener('change',setPlayerName);playerNameInput.addEventListener('blur',()=>{if(document.activeElement!==setNameBtn)setPlayerName()});playerNameInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();setPlayerName();playerNameInput.blur()}});document.querySelector('.game').addEventListener('pointerdown',()=>{if(soundOn)unlockAudio()},{passive:true});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&soundOn){/* next user gesture will resume audio if the browser suspended it */}});render();
 })();
 </script>
 </body>
